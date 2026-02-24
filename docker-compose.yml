@@ -1,9 +1,6 @@
 services:
   tududi-mcp:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: tududi-mcp:latest
+    image: ghcr.io/firstchair/tududi-mcp:latest
     container_name: tududi-mcp
     restart: unless-stopped
     environment:

@@ -74,31 +74,46 @@ export class TududuClient {
     return response.data;
   }
 
-  async getTask(id: string): Promise<TududuTask> {
-    const response = await this.client.get<TududuTask>(`/api/tasks/${id}`);
+  async getTask(uid: string): Promise<TududuTask> {
+    const response = await this.client.get<TududuTask>(`/api/task/${uid}`);
     return response.data;
   }
 
   async createTask(input: CreateTaskInput): Promise<TududuTask> {
-    const response = await this.client.post<TududuTask>('/api/tasks', input);
+    const response = await this.client.post<TududuTask>('/api/task', {
+      name: input.title,
+      description: input.description,
+      project_id: input.projectId,
+      due_date: input.dueDate,
+      priority: input.priority,
+      tags: input.tags,
+    });
     return response.data;
   }
 
-  async updateTask(id: string, input: UpdateTaskInput): Promise<TududuTask> {
-    const response = await this.client.patch<TududuTask>(`/api/tasks/${id}`, input);
+  async updateTask(uid: string, input: UpdateTaskInput): Promise<TududuTask> {
+    const payload: Record<string, unknown> = {};
+    if (input.title !== undefined) payload.name = input.title;
+    if (input.description !== undefined) payload.description = input.description;
+    if (input.completed !== undefined) payload.status = input.completed ? 'done' : 'not_started';
+    if (input.projectId !== undefined) payload.project_id = input.projectId;
+    if (input.dueDate !== undefined) payload.due_date = input.dueDate;
+    if (input.priority !== undefined) payload.priority = input.priority;
+    if (input.tags !== undefined) payload.tags = input.tags;
+    const response = await this.client.patch<TududuTask>(`/api/task/${uid}`, payload);
     return response.data;
   }
 
-  async deleteTask(id: string): Promise<void> {
-    await this.client.delete(`/api/tasks/${id}`);
+  async deleteTask(uid: string): Promise<void> {
+    await this.client.delete(`/api/task/${uid}`);
   }
 
-  async completeTask(id: string): Promise<TududuTask> {
-    return this.updateTask(id, { completed: true });
+  async completeTask(uid: string): Promise<TududuTask> {
+    return this.updateTask(uid, { completed: true });
   }
 
   async searchTasks(params: SearchTasksParams): Promise<TududuTask[]> {
-    const response = await this.client.get<TududuTask[]>('/api/tasks/search', {
+    const response = await this.client.get<TududuTask[]>('/api/tasks', {
       params,
     });
     return response.data;
@@ -116,7 +131,7 @@ export class TududuClient {
   }
 
   async createProject(input: CreateProjectInput): Promise<TududuProject> {
-    const response = await this.client.post<TududuProject>('/api/projects', input);
+    const response = await this.client.post<TududuProject>('/api/project', input);
     return response.data;
   }
 
