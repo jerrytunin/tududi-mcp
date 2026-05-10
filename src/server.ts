@@ -84,7 +84,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {
             id: {
               type: 'string',
-              description: 'Task ID',
+              description: 'Task uid (string hash from list_tasks - NOT the numeric id)',
             },
             title: {
               type: 'string',
@@ -92,7 +92,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             description: {
               type: 'string',
-              description: 'New task description',
+              description: 'New task description (mapped to note in Tududi)',
             },
             completed: {
               type: 'boolean',
@@ -102,6 +102,23 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: 'string',
               enum: ['low', 'medium', 'high'],
               description: 'Task priority',
+            },
+            projectId: {
+              type: 'string',
+              description: 'Project ID to assign task to (numeric id from list_projects)',
+            },
+            areaId: {
+              type: 'string',
+              description: 'Area ID to assign task to',
+            },
+            dueDate: {
+              type: 'string',
+              description: 'Due date in ISO format (YYYY-MM-DD or full ISO)',
+            },
+            tags: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Tags to assign to the task',
             },
           },
           required: ['id'],
@@ -115,7 +132,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {
             id: {
               type: 'string',
-              description: 'Task ID to delete',
+              description: 'Task uid (string hash from list_tasks - NOT the numeric id)',
             },
           },
           required: ['id'],
@@ -129,7 +146,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {
             id: {
               type: 'string',
-              description: 'Task ID to complete',
+              description: 'Task uid (string hash from list_tasks - NOT the numeric id)',
             },
           },
           required: ['id'],
