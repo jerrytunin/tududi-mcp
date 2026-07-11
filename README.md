@@ -57,6 +57,11 @@ npm run build
 
 ## Configuration
 
+The MCP server supports either `stdio` or `http` transport depending on the
+`TRANSPORT` environmental variable. When set to `http`, one can set the port
+that the server will listen on for requests with the `PORT` variable. If
+not specified, the port will default to 3000.
+
 The MCP server supports two authentication methods:
 
 ### Option 1: API Key Authentication (Newer Tududi Versions)
@@ -67,6 +72,8 @@ Create a `.env` file:
 TUDUDI_API_URL=http://localhost:3000
 TUDUDI_API_KEY=your-api-key-here
 LOG_LEVEL=info
+TRANSPORT=stdio     # or http
+PORT=3000           # only necessary if transport is http
 ```
 
 ### Option 2: Email/Password Authentication (Older Tududi Versions)
@@ -78,6 +85,8 @@ TUDUDI_API_URL=http://localhost:3000
 TUDUDI_EMAIL=your-email@example.com
 TUDUDI_PASSWORD=your-password
 LOG_LEVEL=info
+TRANSPORT=stdio     # or http
+PORT=3000           # only necessary if transport is http
 ```
 
 The MCP server will automatically detect which authentication method to use based on the environment variables provided.

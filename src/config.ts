@@ -8,6 +8,8 @@ export interface Config {
   tududuEmail?: string;
   tududuPassword?: string;
   logLevel: string;
+  transport: 'stdio' | 'http';
+  port: number;
 }
 
 export function getConfig(): Config {
@@ -33,5 +35,7 @@ export function getConfig(): Config {
     tududuEmail,
     tududuPassword,
     logLevel: process.env.LOG_LEVEL || 'info',
+    transport: (process.env.TRANSPORT || 'stdio') as 'stdio' | 'http',
+    port: parseInt(process.env.PORT || '3000', 10),
   };
 }
