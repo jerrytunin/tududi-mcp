@@ -1,148 +1,301 @@
 import axios, { AxiosInstance } from 'axios';
+import { normalizeTududiApiUrl } from './config.js';
 import { logger } from './logger.js';
 import {
-  TududuTask,
-  TududuProject,
-  TududuArea,
-  CreateTaskInput,
-  UpdateTaskInput,
-  CreateProjectInput,
   CreateAreaInput,
+  CreateProjectInput,
+  CreateTaskInput,
   SearchTasksParams,
+  TududuArea,
+  TududuProject,
+  TududuTask,
+  UpdateTaskInput,
 } from './types.js';
 
-// Tududi 1.1+ expects snake_case names with `name` instead of `title`
-function mapTaskInput(input: Record<string, unknown>): Record<string, unknown> {
+const PRIORITY_MAP: Record<string, number> = {
+  low: 0,
+  medium: 1,
+  high: 2,
+};
+
+function isNumericId(value: string): boolean {
+  return /^\d+$/.test(value.trim());
+}
+
+function unwrapList<T>(data: T[] | Record<string, unknown>, key: string): T[] {
+  if (Array.isArray(data)) {
+    return data;
+  }
+  const nested = data?.[key];
+  return Array.isArray(nested) ? (nested as T[]) : [];
+}
+
+function formatCookieHeader(setCookie: string | string[]): string {
+  const cookies = Array.isArray(setCookie) ? setCookie : [setCookie];
+  return cookies.map((cookie) => cookie.split(';')[0].trim()).join('; ');
+}
+
+// Tududi 1.1+ expects snake_case fields with `name` instead of `title` and `note` instead of `description`
+function mapTaskInput(input: CreateTaskInput | UpdateTaskInput): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  if ('title' in input && input.title !== undefined) out.name = input.title;
-  if ('description' in input && input.description !== undefined) out.note = input.description;
-  if ('projectId' in input && input.projectId !== undefined) out.project_id = input.projectId;
-  if ('dueDate' in input && input.dueDate !== undefined) out.due_date = input.dueDate;
-  if ('priority' in input && input.priority !== undefined) {
-    const map: Record<string, number> = { low: 0, medium: 1, high: 2 };
-    out.priority = typeof input.priority === 'string' ? map[input.priority as string] ?? input.priority : input.priority;
+  if (input.title !== undefined) out.name = input.title;
+  if (input.description !== undefined) out.note = input.description;
+  if (input.projectId !== undefined) out.project_id = input.projectId;
+  if (input.areaId !== undefined) out.area_id = input.areaId;
+  if (input.dueDate !== undefined) out.due_date = input.dueDate;
+  if (input.priority !== undefined) {
+    out.priority = PRIORITY_MAP[input.priority] ?? input.priority;
   }
   if ('completed' in input && input.completed !== undefined) {
     out.status = input.completed ? 'done' : 'not_started';
   }
-  if ('tags' in input && Array.isArray(input.tags)) out.tags = input.tags;
+  if (Array.isArray(input.tags)) {
+    out.tags = input.tags;
+  }
   return out;
 }
 
-function mapProjectInput(input: Record<string, unknown>): Record<string, unknown> {
+function mapProjectInput(input: CreateProjectInput): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  if ('name' in input && input.name !== undefined) out.name = input.name;
-  if ('description' in input && input.description !== undefined) out.description = input.description;
-  if ('areaId' in input && input.areaId !== undefined) out.area_id = input.areaId;
-  if ('color' in input && input.color !== undefined) out.color = input.color;
+  if (input.name !== undefined) out.name = input.name;
+  if (input.description !== undefined) out.description = input.description;
+  if (input.areaId !== undefined) out.area_id = input.areaId;
+  if (input.color !== undefined) out.color = input.color;
   return out;
 }
 
 export class TududuClient {
   private client: AxiosInstance;
   private sessionCookie?: string;
+  private readonly hasApiKey: boolean;
+  private readonly email?: string;
+  private readonly password?: string;
+  private loginPromise?: Promise<void>;
+  private isAuthenticated = false;
 
   constructor(apiUrl: string, apiKey?: string, email?: string, password?: string) {
+    this.hasApiKey = Boolean(apiKey);
+    this.email = email;
+    this.password = password;
+
     this.client = axios.create({
-      baseURL: apiUrl,
+      baseURL: normalizeTududiApiUrl(apiUrl),
       headers: { 'Content-Type': 'application/json' },
       withCredentials: true,
     });
+
     if (apiKey) {
       this.client.defaults.headers.common['Authorization'] = `Bearer ${apiKey}`;
     }
-    if (email && password && !apiKey) {
-      this.login(email, password).catch((error) => {
-        logger.error({ error: error.message }, 'Failed to login to Tududi');
-        throw error;
-      });
-    }
+
+    this.client.interceptors.request.use(async (reqConfig) => {
+      if (reqConfig.url !== '/api/v1/login') {
+        await this.ensureAuthenticated();
+        if (this.sessionCookie && reqConfig.headers) {
+          if (typeof reqConfig.headers.set === 'function') {
+            reqConfig.headers.set('Cookie', this.sessionCookie);
+          } else {
+            (reqConfig.headers as Record<string, string>)['Cookie'] = this.sessionCookie;
+          }
+        }
+      }
+      return reqConfig;
+    });
+
     this.client.interceptors.response.use(
-      (r) => r,
-      (e) => {
-        logger.error({ error: e.message }, 'Tududi API error');
-        throw e;
+      (response) => response,
+      (error) => {
+        logger.error({ error: error.message }, 'Tududi API error');
+        throw error;
       }
     );
   }
 
-  private async login(email: string, password: string): Promise<void> {
-    const response = await this.client.post('/api/login', { email, password });
-    const setCookie = response.headers['set-cookie'];
-    if (setCookie) {
-      this.sessionCookie = Array.isArray(setCookie) ? setCookie.join('; ') : setCookie;
-      this.client.defaults.headers.common['Cookie'] = this.sessionCookie;
+  private async ensureAuthenticated(): Promise<void> {
+    if (this.hasApiKey || this.isAuthenticated || !this.email || !this.password) {
+      return;
     }
-    logger.info('Successfully logged in to Tududi');
+    if (!this.loginPromise) {
+      this.loginPromise = this.login(this.email, this.password).catch((error) => {
+        this.loginPromise = undefined;
+        throw error;
+      });
+    }
+    await this.loginPromise;
+  }
+
+  private async login(email: string, password: string): Promise<void> {
+    try {
+      const response = await this.client.post('/api/v1/login', { email, password });
+      const setCookie = response.headers['set-cookie'];
+      if (setCookie) {
+        this.sessionCookie = formatCookieHeader(setCookie);
+        this.client.defaults.headers.common['Cookie'] = this.sessionCookie;
+      }
+      this.isAuthenticated = true;
+      logger.info('Successfully logged in to Tududi');
+    } catch (error) {
+      logger.error({ error }, 'Failed to login to Tududi');
+      throw new Error('Failed to authenticate with Tududi');
+    }
   }
 
   // Tasks
   async listTasks(): Promise<TududuTask[]> {
-    return (await this.client.get<TududuTask[]>('/api/tasks')).data;
+    const response = await this.client.get<TududuTask[] | Record<string, unknown>>('/api/v1/tasks');
+    return unwrapList<TududuTask>(response.data, 'tasks');
   }
 
   async getTask(id: string): Promise<TududuTask> {
-    return (await this.client.get<TududuTask>(`/api/task/${id}`)).data;
+    const response = await this.client.get<TududuTask>(`/api/v1/task/${encodeURIComponent(id)}`);
+    return response.data;
   }
 
   async createTask(input: CreateTaskInput): Promise<TududuTask> {
-    const body = mapTaskInput(input as unknown as Record<string, unknown>);
-    return (await this.client.post<TududuTask>('/api/task', body)).data;
+    const body = mapTaskInput(input);
+    const response = await this.client.post<TududuTask>('/api/v1/task', body);
+    return response.data;
   }
 
   async updateTask(id: string, input: UpdateTaskInput): Promise<TududuTask> {
-    const body = mapTaskInput(input as unknown as Record<string, unknown>);
-    return (await this.client.patch<TududuTask>(`/api/task/${id}`, body)).data;
+    const body = mapTaskInput(input);
+    const response = await this.client.patch<TududuTask>(
+      `/api/v1/task/${encodeURIComponent(id)}`,
+      body
+    );
+    return response.data;
   }
 
   async deleteTask(id: string): Promise<void> {
-    await this.client.delete(`/api/task/${id}`);
+    await this.client.delete(`/api/v1/task/${encodeURIComponent(id)}`);
   }
 
   async completeTask(id: string): Promise<TududuTask> {
-    return this.updateTask(id, { completed: true } as UpdateTaskInput);
+    return this.updateTask(id, { completed: true });
   }
 
   async searchTasks(params: SearchTasksParams): Promise<TududuTask[]> {
-    // Tududi 1.1+: GET /api/tasks?search=...&project_id=...&area_id=...&status=&priority=
-    const p = params as Record<string, unknown> & { query?: string };
+    const query = params.query?.trim();
     const qp: Record<string, unknown> = {};
-    if (p.query !== undefined) qp.search = p.query;
-    if (p.projectId !== undefined) qp.project_id = p.projectId;
-    if (p.areaId !== undefined) qp.area_id = p.areaId;
-    if (p.completed !== undefined) qp.status = p.completed ? 'done' : 'not_started';
-    if (p.priority !== undefined) {
-      const map: Record<string, number> = { low: 0, medium: 1, high: 2 };
-      qp.priority = typeof p.priority === 'string' ? map[p.priority as string] ?? p.priority : p.priority;
+
+    if (query) {
+      qp.q = query;
+      qp.filters = 'Task';
+      if (params.completed !== undefined) {
+        qp.status = params.completed ? 'completed' : 'active';
+      }
+      if (params.priority !== undefined) {
+        qp.priority = params.priority;
+      }
+      if (Array.isArray(params.tags) && params.tags.length > 0) {
+        qp.tags = params.tags.join(',');
+      }
+      if (params.projectId && !isNumericId(params.projectId)) {
+        qp.project_uid = params.projectId.trim();
+      }
+      if (params.areaId && !isNumericId(params.areaId)) {
+        qp.area_uid = params.areaId.trim();
+      }
+
+      const response = await this.client.get<TududuTask[] | Record<string, unknown>>(
+        '/api/v1/search',
+        { params: qp }
+      );
+      const data = response.data;
+      let results: TududuTask[] = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.results)
+          ? (data.results as TududuTask[])
+          : unwrapList<TududuTask>(data, 'tasks');
+
+      if (params.projectId && isNumericId(params.projectId)) {
+        const targetProjectId = params.projectId.trim();
+        results = results.filter((task) => {
+          const projectObj = task.Project as { id?: string | number } | undefined;
+          const idValue = task.project_id ?? task.projectId ?? projectObj?.id;
+          return idValue !== undefined && idValue !== null && String(idValue) === targetProjectId;
+        });
+      }
+
+      if (params.areaId && isNumericId(params.areaId)) {
+        const targetAreaId = params.areaId.trim();
+        results = results.filter((task) => {
+          const areaObj = task.Area as { id?: string | number } | undefined;
+          const idValue = task.area_id ?? task.areaId ?? areaObj?.id;
+          return idValue !== undefined && idValue !== null && String(idValue) === targetAreaId;
+        });
+      }
+
+      return results;
     }
-    if (Array.isArray(p.tags)) qp.tags = (p.tags as string[]).join(',');
-    return (await this.client.get<TududuTask[]>('/api/tasks', { params: qp })).data;
+
+    if (params.projectId) {
+      const projectId = params.projectId.trim();
+      if (isNumericId(projectId)) {
+        qp.project_id = projectId;
+      } else {
+        qp.project_uid = projectId;
+      }
+    }
+    if (params.areaId) {
+      const areaId = params.areaId.trim();
+      if (isNumericId(areaId)) {
+        qp.area_id = areaId;
+      } else {
+        qp.area_uid = areaId;
+      }
+    }
+    if (params.completed !== undefined) {
+      qp.status = params.completed ? 'done' : 'active';
+    }
+    if (params.priority !== undefined) {
+      qp.priority = params.priority;
+    }
+    if (Array.isArray(params.tags) && params.tags.length > 0) {
+      qp.tags = params.tags.join(',');
+    }
+
+    const response = await this.client.get<TududuTask[] | Record<string, unknown>>(
+      '/api/v1/tasks',
+      { params: qp }
+    );
+    return unwrapList<TududuTask>(response.data, 'tasks');
   }
 
   // Projects
   async listProjects(): Promise<TududuProject[]> {
-    return (await this.client.get<TududuProject[]>('/api/projects')).data;
+    const response = await this.client.get<TududuProject[] | Record<string, unknown>>(
+      '/api/v1/projects'
+    );
+    return unwrapList<TududuProject>(response.data, 'projects');
   }
 
   async getProject(id: string): Promise<TududuProject> {
-    return (await this.client.get<TududuProject>(`/api/project/${id}`)).data;
+    const response = await this.client.get<TududuProject>(
+      `/api/v1/project/${encodeURIComponent(id)}`
+    );
+    return response.data;
   }
 
   async createProject(input: CreateProjectInput): Promise<TududuProject> {
-    const body = mapProjectInput(input as unknown as Record<string, unknown>);
-    return (await this.client.post<TududuProject>('/api/project', body)).data;
+    const body = mapProjectInput(input);
+    const response = await this.client.post<TududuProject>('/api/v1/project', body);
+    return response.data;
   }
 
   // Areas
   async listAreas(): Promise<TududuArea[]> {
-    return (await this.client.get<TududuArea[]>('/api/areas')).data;
+    const response = await this.client.get<TududuArea[] | Record<string, unknown>>('/api/v1/areas');
+    return unwrapList<TududuArea>(response.data, 'areas');
   }
 
   async getArea(id: string): Promise<TududuArea> {
-    return (await this.client.get<TududuArea>(`/api/areas/${id}`)).data;
+    const response = await this.client.get<TududuArea>(`/api/v1/areas/${encodeURIComponent(id)}`);
+    return response.data;
   }
 
   async createArea(input: CreateAreaInput): Promise<TududuArea> {
-    return (await this.client.post<TududuArea>('/api/areas', input)).data;
+    const response = await this.client.post<TududuArea>('/api/v1/areas', input);
+    return response.data;
   }
 }

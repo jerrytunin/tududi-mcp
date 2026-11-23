@@ -14,11 +14,12 @@ Tududi MCP enables AI agents and developers to interact with Tududi tasks, proje
 
 ### Features
 
-- **Task Management**: Create, read, update, and delete tasks
+- **Task Management**: Create, read, update, complete, and delete tasks (Tududi 1.1+ `/api/v1` compatible)
 - **Project Organization**: Manage projects and organize work
 - **Area Management**: Organize tasks by areas
-- **Search & Filter**: Query tasks with flexible filtering
-- **AI-Ready**: Works with AI agents like GitHub Copilot and Augment Code Agent
+- **Search & Filter**: Query tasks via Tududi `/api/v1/search` and `/api/v1/tasks` filters
+- **Dual Transport**: Supports both local `stdio` and remote Streamable HTTP (`/mcp` + `/health`) with optional Bearer authentication
+- **AI-Ready**: Works with AI agents like Claude, ChatGPT, GitHub Copilot, and Augment Code Agent
 
 ## Installation
 
@@ -57,12 +58,20 @@ npm run build
 
 ## Configuration
 
-The MCP server supports either `stdio` or `http` transport depending on the
-`TRANSPORT` environmental variable. When set to `http`, one can set the port
-that the server will listen on for requests with the `PORT` variable. If
-not specified, the port will default to 3000.
+The server targets Tududi 1.1+ `/api/v1` endpoints. `TUDUDI_API_URL` should be your Tududi base URL (any trailing `/`, `/api`, or `/api/v1` suffix is normalized automatically).
 
-The MCP server supports two authentication methods:
+### Transport Options
+
+- `TRANSPORT`: `stdio` (default) for local IDE/CLI clients, or `http` for remote Streamable HTTP clients (such as Claude or ChatGPT connectors)
+- `PORT`: Listening port when `TRANSPORT=http` (default: `3000`)
+- `MCP_AUTH_TOKEN`: Optional Bearer token; when set in `http` mode, all requests to `/mcp` must include `Authorization: Bearer <token>`
+
+When `TRANSPORT=http`, the server exposes:
+
+- `http://<host>:<port>/mcp` — MCP Streamable HTTP endpoint (`POST`, `GET`, `DELETE`)
+- `http://<host>:<port>/health` — Unauthenticated health check returning `200 {"status":"ok","transport":"http"}`
+
+The MCP server supports two Tududi authentication methods:
 
 ### Option 1: API Key Authentication (Newer Tududi Versions)
 
@@ -73,7 +82,8 @@ TUDUDI_API_URL=http://localhost:3000
 TUDUDI_API_KEY=your-api-key-here
 LOG_LEVEL=info
 TRANSPORT=stdio     # or http
-PORT=3000           # only necessary if transport is http
+PORT=3000           # only used when TRANSPORT=http
+# MCP_AUTH_TOKEN=your-secret-bearer-token
 ```
 
 ### Option 2: Email/Password Authentication (Older Tududi Versions)
@@ -86,7 +96,8 @@ TUDUDI_EMAIL=your-email@example.com
 TUDUDI_PASSWORD=your-password
 LOG_LEVEL=info
 TRANSPORT=stdio     # or http
-PORT=3000           # only necessary if transport is http
+PORT=3000           # only used when TRANSPORT=http
+# MCP_AUTH_TOKEN=your-secret-bearer-token
 ```
 
 The MCP server will automatically detect which authentication method to use based on the environment variables provided.
@@ -131,17 +142,21 @@ docker-compose down
 # Build the image
 docker build -t tududi-mcp .
 
-# Run the container
+# Run in stdio mode
 docker run -it \
   -e TUDUDI_API_URL=http://localhost:3000 \
   -e TUDUDI_API_KEY=your-api-key \
   -e LOG_LEVEL=info \
   tududi-mcp
 
-# Run in background
+# Run in Streamable HTTP mode with Bearer auth
 docker run -d --name tududi-mcp \
-  -e TUDUDI_API_URL=http://localhost:3000 \
+  -p 3001:3000 \
+  -e TUDUDI_API_URL=http://tududi:3000 \
   -e TUDUDI_API_KEY=your-api-key \
+  -e TRANSPORT=http \
+  -e PORT=3000 \
+  -e MCP_AUTH_TOKEN=your-secret-bearer-token \
   tududi-mcp
 ```
 

@@ -24,7 +24,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install production dependencies only
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy built files from builder
 COPY --from=builder /app/dist ./dist
@@ -32,6 +32,9 @@ COPY --from=builder /app/dist ./dist
 # Set environment variables (can be overridden)
 ENV NODE_ENV=production
 ENV LOG_LEVEL=info
+
+# HTTP port used when TRANSPORT=http (default stdio mode ignores this)
+EXPOSE 3000
 
 # Run the server
 CMD ["node", "dist/server.js"]

@@ -2,39 +2,68 @@
  * Tududi API Types
  */
 
+export interface TududuTaskTag {
+  id?: number | string;
+  uid?: string;
+  name: string;
+  color?: string;
+}
+
 export interface TududuTask {
-  id: string;
-  title: string;
+  id: string | number;
+  uid?: string;
+  name?: string;
+  title?: string;
+  note?: string;
   description?: string;
-  completed: boolean;
+  status?: string | number;
+  completed?: boolean;
   projectId?: string;
+  project_id?: string | number | null;
+  project_uid?: string | null;
   areaId?: string;
+  area_id?: string | number | null;
+  area_uid?: string | null;
   dueDate?: string;
-  priority?: 'low' | 'medium' | 'high';
-  tags?: string[];
-  createdAt: string;
-  updatedAt: string;
+  due_date?: string | null;
+  priority?: 'low' | 'medium' | 'high' | number;
+  tags?: Array<string | TududuTaskTag>;
+  createdAt?: string;
+  created_at?: string;
+  updatedAt?: string;
+  updated_at?: string;
+  [key: string]: unknown;
 }
 
 export interface TududuProject {
-  id: string;
+  id: string | number;
+  uid?: string;
   name: string;
   description?: string;
   areaId?: string;
+  area_id?: string | number | null;
   color?: string;
-  archived: boolean;
-  createdAt: string;
-  updatedAt: string;
+  status?: string;
+  archived?: boolean;
+  createdAt?: string;
+  created_at?: string;
+  updatedAt?: string;
+  updated_at?: string;
+  [key: string]: unknown;
 }
 
 export interface TududuArea {
-  id: string;
+  id: string | number;
+  uid?: string;
   name: string;
   description?: string;
   color?: string;
-  archived: boolean;
-  createdAt: string;
-  updatedAt: string;
+  archived?: boolean;
+  createdAt?: string;
+  created_at?: string;
+  updatedAt?: string;
+  updated_at?: string;
+  [key: string]: unknown;
 }
 
 export interface CreateTaskInput {

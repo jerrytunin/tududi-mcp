@@ -14,7 +14,13 @@ services:
       - TUDUDI_EMAIL=${TUDUDI_EMAIL}
       - TUDUDI_PASSWORD=${TUDUDI_PASSWORD}
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      - TRANSPORT=${TRANSPORT:-stdio}
+      - PORT=${PORT:-3000}
+      - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN:-}
       - NODE_ENV=production
+    # Uncomment when TRANSPORT=http (adjust host port if Tududi uses 3000)
+    # ports:
+    #   - "${HOST_PORT:-3001}:${PORT:-3000}"
     # For stdio communication, we use stdin_open and tty
     stdin_open: true
     tty: true
