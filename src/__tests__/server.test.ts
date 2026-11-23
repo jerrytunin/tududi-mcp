@@ -3,12 +3,39 @@ import request from 'supertest';
 import { createExpressApp } from '../server.js';
 import { TududuClient } from '../tududi-client.js';
 import {
+  CreateAreaInput,
+  CreateCommentInput,
+  CreateGoalInput,
+  CreateHabitInput,
+  CreateInboxItemInput,
+  CreateNoteInput,
   CreateProjectInput,
+  CreateSubtaskInput,
+  CreateTagInput,
   CreateTaskInput,
+  HabitStatsParams,
+  ListTasksParams,
+  LogHabitCompletionInput,
+  ProcessInboxItemInput,
   SearchTasksParams,
+  SkipHabitDayInput,
   TududuArea,
+  TududuComment,
+  TududuGoal,
+  TududuHabit,
+  TududuInboxItem,
+  TududuNote,
   TududuProject,
+  TududuTag,
   TududuTask,
+  TududuTaskMetrics,
+  UpdateAreaInput,
+  UpdateGoalInput,
+  UpdateHabitInput,
+  UpdateInboxItemInput,
+  UpdateNoteInput,
+  UpdateProjectInput,
+  UpdateTagInput,
   UpdateTaskInput,
 } from '../types.js';
 
@@ -40,38 +67,128 @@ function parseMcpResponse(res: request.Response): JsonRpcResponse {
 interface MockClientResult {
   client: TududuClient;
   calls: {
-    listTasks: number;
+    listTasks: Array<ListTasksParams | undefined>;
+    getTask: string[];
     createTask: CreateTaskInput[];
     updateTask: Array<{ id: string; data: UpdateTaskInput }>;
     deleteTask: string[];
     completeTask: string[];
-    listProjects: number;
-    createProject: CreateProjectInput[];
-    listAreas: number;
     searchTasks: SearchTasksParams[];
+    getTaskMetrics: Array<string | undefined>;
+    listSubtasks: string[];
+    createSubtask: Array<{ taskId: string; data: CreateSubtaskInput }>;
+    listComments: string[];
+    createComment: Array<{ taskId: string; data: CreateCommentInput }>;
+    deleteComment: string[];
+    listProjects: number;
+    getProject: string[];
+    createProject: CreateProjectInput[];
+    updateProject: Array<{ id: string; data: UpdateProjectInput }>;
+    completeProject: Array<{ id: string; completeOpenTasks: boolean }>;
+    deleteProject: string[];
+    listAreas: number;
+    getArea: string[];
+    createArea: CreateAreaInput[];
+    updateArea: Array<{ id: string; data: UpdateAreaInput }>;
+    deleteArea: string[];
+    listTags: number;
+    createTag: CreateTagInput[];
+    updateTag: Array<{ identifier: string; data: UpdateTagInput }>;
+    deleteTag: string[];
+    listNotes: number;
+    getNote: string[];
+    createNote: CreateNoteInput[];
+    updateNote: Array<{ id: string; data: UpdateNoteInput }>;
+    deleteNote: string[];
+    listInboxItems: number;
+    getInboxItem: string[];
+    createInboxItem: CreateInboxItemInput[];
+    updateInboxItem: Array<{ id: string; data: UpdateInboxItemInput }>;
+    processInboxItem: Array<{ id: string; data: ProcessInboxItemInput | undefined }>;
+    deleteInboxItem: string[];
+    listGoals: number;
+    getGoal: string[];
+    createGoal: CreateGoalInput[];
+    updateGoal: Array<{ id: string; data: UpdateGoalInput }>;
+    deleteGoal: string[];
+    listHabits: number;
+    getHabit: string[];
+    createHabit: CreateHabitInput[];
+    updateHabit: Array<{ id: string; data: UpdateHabitInput }>;
+    logHabitCompletion: Array<{ id: string; data: LogHabitCompletionInput | undefined }>;
+    skipHabitDay: Array<{ id: string; data: SkipHabitDayInput | undefined }>;
+    getHabitStats: Array<{ id: string; params: HabitStatsParams | undefined }>;
+    deleteHabit: string[];
   };
 }
 
 function createFakeClient(options?: { throwOnListTasks?: boolean }): MockClientResult {
   const calls: MockClientResult['calls'] = {
-    listTasks: 0,
+    listTasks: [],
+    getTask: [],
     createTask: [],
     updateTask: [],
     deleteTask: [],
     completeTask: [],
-    listProjects: 0,
-    createProject: [],
-    listAreas: 0,
     searchTasks: [],
+    getTaskMetrics: [],
+    listSubtasks: [],
+    createSubtask: [],
+    listComments: [],
+    createComment: [],
+    deleteComment: [],
+    listProjects: 0,
+    getProject: [],
+    createProject: [],
+    updateProject: [],
+    completeProject: [],
+    deleteProject: [],
+    listAreas: 0,
+    getArea: [],
+    createArea: [],
+    updateArea: [],
+    deleteArea: [],
+    listTags: 0,
+    createTag: [],
+    updateTag: [],
+    deleteTag: [],
+    listNotes: 0,
+    getNote: [],
+    createNote: [],
+    updateNote: [],
+    deleteNote: [],
+    listInboxItems: 0,
+    getInboxItem: [],
+    createInboxItem: [],
+    updateInboxItem: [],
+    processInboxItem: [],
+    deleteInboxItem: [],
+    listGoals: 0,
+    getGoal: [],
+    createGoal: [],
+    updateGoal: [],
+    deleteGoal: [],
+    listHabits: 0,
+    getHabit: [],
+    createHabit: [],
+    updateHabit: [],
+    logHabitCompletion: [],
+    skipHabitDay: [],
+    getHabitStats: [],
+    deleteHabit: [],
   };
 
   const fakeClient: Partial<TududuClient> = {
-    listTasks: async (): Promise<TududuTask[]> => {
-      calls.listTasks += 1;
+    listTasks: async (params?: ListTasksParams): Promise<TududuTask[]> => {
+      calls.listTasks.push(params);
       if (options?.throwOnListTasks) {
         throw new Error('Upstream Tududi unavailable');
       }
       return [{ id: 1, uid: 'task-uid-1', name: 'Sample task' }];
+    },
+    getTask: async (id: string): Promise<TududuTask> => {
+      calls.getTask.push(id);
+      return { id: 1, uid: id, name: 'Sample task' };
     },
     createTask: async (input: CreateTaskInput): Promise<TududuTask> => {
       calls.createTask.push(input);
@@ -88,21 +205,197 @@ function createFakeClient(options?: { throwOnListTasks?: boolean }): MockClientR
       calls.completeTask.push(id);
       return { id: 2, uid: id, status: 'done' };
     },
+    searchTasks: async (params: SearchTasksParams): Promise<TududuTask[]> => {
+      calls.searchTasks.push(params);
+      return [{ id: 1, uid: 'task-uid-1', name: 'Matched task' }];
+    },
+    getTaskMetrics: async (type?: string): Promise<TududuTaskMetrics> => {
+      calls.getTaskMetrics.push(type);
+      return { total: 10, today: 2 };
+    },
+    listSubtasks: async (taskId: string): Promise<TududuTask[]> => {
+      calls.listSubtasks.push(taskId);
+      return [{ id: 3, uid: 'sub-uid-1', name: 'Subtask' }];
+    },
+    createSubtask: async (taskId: string, input: CreateSubtaskInput): Promise<TududuTask> => {
+      calls.createSubtask.push({ taskId, data: input });
+      return { id: 4, uid: 'sub-uid-2', name: input.title };
+    },
+    listComments: async (taskId: string): Promise<TududuComment[]> => {
+      calls.listComments.push(taskId);
+      return [{ uid: 'comment-uid-1', body: 'Looks good' }];
+    },
+    createComment: async (taskId: string, input: CreateCommentInput): Promise<TududuComment> => {
+      calls.createComment.push({ taskId, data: input });
+      return { uid: 'comment-uid-2', body: input.content };
+    },
+    deleteComment: async (commentId: string): Promise<TududuComment> => {
+      calls.deleteComment.push(commentId);
+      return { uid: commentId, body: '' };
+    },
     listProjects: async (): Promise<TududuProject[]> => {
       calls.listProjects += 1;
       return [{ id: 10, uid: 'proj-uid-1', name: 'Sample project' }];
+    },
+    getProject: async (id: string): Promise<TududuProject> => {
+      calls.getProject.push(id);
+      return { id: 10, uid: id, name: 'Sample project' };
     },
     createProject: async (input: CreateProjectInput): Promise<TududuProject> => {
       calls.createProject.push(input);
       return { id: 11, uid: 'proj-uid-2', name: input.name };
     },
+    updateProject: async (id: string, input: UpdateProjectInput): Promise<TududuProject> => {
+      calls.updateProject.push({ id, data: input });
+      return { id: 10, uid: id, name: input.name || 'Updated project' };
+    },
+    completeProject: async (
+      id: string,
+      completeOpenTasks = false
+    ): Promise<Record<string, unknown>> => {
+      calls.completeProject.push({ id, completeOpenTasks });
+      return { project: { uid: id, status: 'done' }, completed_tasks: 2 };
+    },
+    deleteProject: async (id: string): Promise<void> => {
+      calls.deleteProject.push(id);
+    },
     listAreas: async (): Promise<TududuArea[]> => {
       calls.listAreas += 1;
       return [{ id: 20, uid: 'area-uid-1', name: 'Work' }];
     },
-    searchTasks: async (params: SearchTasksParams): Promise<TududuTask[]> => {
-      calls.searchTasks.push(params);
-      return [{ id: 1, uid: 'task-uid-1', name: 'Matched task' }];
+    getArea: async (id: string): Promise<TududuArea> => {
+      calls.getArea.push(id);
+      return { id: 20, uid: id, name: 'Work' };
+    },
+    createArea: async (input: CreateAreaInput): Promise<TududuArea> => {
+      calls.createArea.push(input);
+      return { id: 21, uid: 'area-uid-2', name: input.name };
+    },
+    updateArea: async (id: string, input: UpdateAreaInput): Promise<TududuArea> => {
+      calls.updateArea.push({ id, data: input });
+      return { id: 20, uid: id, name: input.name || 'Updated area' };
+    },
+    deleteArea: async (id: string): Promise<void> => {
+      calls.deleteArea.push(id);
+    },
+    listTags: async (): Promise<TududuTag[]> => {
+      calls.listTags += 1;
+      return [{ uid: 'tag-uid-1', name: 'focus' }];
+    },
+    createTag: async (input: CreateTagInput): Promise<TududuTag> => {
+      calls.createTag.push(input);
+      return { uid: 'tag-uid-2', name: input.name };
+    },
+    updateTag: async (identifier: string, input: UpdateTagInput): Promise<TududuTag> => {
+      calls.updateTag.push({ identifier, data: input });
+      return { uid: 'tag-uid-1', name: input.name || identifier };
+    },
+    deleteTag: async (identifier: string): Promise<void> => {
+      calls.deleteTag.push(identifier);
+    },
+    listNotes: async (): Promise<TududuNote[]> => {
+      calls.listNotes += 1;
+      return [{ uid: 'note-uid-1', title: 'Architecture Note' }];
+    },
+    getNote: async (id: string): Promise<TududuNote> => {
+      calls.getNote.push(id);
+      return { uid: id, title: 'Architecture Note', content: 'Details' };
+    },
+    createNote: async (input: CreateNoteInput): Promise<TududuNote> => {
+      calls.createNote.push(input);
+      return { uid: 'note-uid-2', title: input.title };
+    },
+    updateNote: async (id: string, input: UpdateNoteInput): Promise<TududuNote> => {
+      calls.updateNote.push({ id, data: input });
+      return { uid: id, title: input.title || 'Updated Note' };
+    },
+    deleteNote: async (id: string): Promise<void> => {
+      calls.deleteNote.push(id);
+    },
+    listInboxItems: async (): Promise<TududuInboxItem[]> => {
+      calls.listInboxItems += 1;
+      return [{ uid: 'inbox-uid-1', content: 'Review roadmap' }];
+    },
+    getInboxItem: async (id: string): Promise<TududuInboxItem> => {
+      calls.getInboxItem.push(id);
+      return { uid: id, content: 'Review roadmap' };
+    },
+    createInboxItem: async (input: CreateInboxItemInput): Promise<TududuInboxItem> => {
+      calls.createInboxItem.push(input);
+      return { uid: 'inbox-uid-2', content: input.content };
+    },
+    updateInboxItem: async (id: string, input: UpdateInboxItemInput): Promise<TududuInboxItem> => {
+      calls.updateInboxItem.push({ id, data: input });
+      return { uid: id, content: input.content || 'Updated' };
+    },
+    processInboxItem: async (
+      id: string,
+      input?: ProcessInboxItemInput
+    ): Promise<TududuInboxItem> => {
+      calls.processInboxItem.push({ id, data: input });
+      return { uid: id, content: 'Processed', status: 'processed' };
+    },
+    deleteInboxItem: async (id: string): Promise<void> => {
+      calls.deleteInboxItem.push(id);
+    },
+    listGoals: async (): Promise<TududuGoal[]> => {
+      calls.listGoals += 1;
+      return [{ uid: 'goal-uid-1', title: 'Ship v0.3.0' }];
+    },
+    getGoal: async (id: string): Promise<TududuGoal> => {
+      calls.getGoal.push(id);
+      return { uid: id, title: 'Ship v0.3.0' };
+    },
+    createGoal: async (input: CreateGoalInput): Promise<TududuGoal> => {
+      calls.createGoal.push(input);
+      return { uid: 'goal-uid-2', title: input.title };
+    },
+    updateGoal: async (id: string, input: UpdateGoalInput): Promise<TududuGoal> => {
+      calls.updateGoal.push({ id, data: input });
+      return { uid: id, title: input.title || 'Updated Goal' };
+    },
+    deleteGoal: async (id: string): Promise<void> => {
+      calls.deleteGoal.push(id);
+    },
+    listHabits: async (): Promise<TududuHabit[]> => {
+      calls.listHabits += 1;
+      return [{ uid: 'habit-uid-1', name: 'Read 20m' }];
+    },
+    getHabit: async (id: string): Promise<TududuHabit> => {
+      calls.getHabit.push(id);
+      return { uid: id, name: 'Read 20m' };
+    },
+    createHabit: async (input: CreateHabitInput): Promise<TududuHabit> => {
+      calls.createHabit.push(input);
+      return { uid: 'habit-uid-2', name: input.name };
+    },
+    updateHabit: async (id: string, input: UpdateHabitInput): Promise<TududuHabit> => {
+      calls.updateHabit.push({ id, data: input });
+      return { uid: id, name: input.name || 'Updated Habit' };
+    },
+    logHabitCompletion: async (
+      id: string,
+      input?: LogHabitCompletionInput
+    ): Promise<Record<string, unknown>> => {
+      calls.logHabitCompletion.push({ id, data: input });
+      return { completion: { id: 1 }, task: { uid: id } };
+    },
+    skipHabitDay: async (
+      id: string,
+      input?: SkipHabitDayInput
+    ): Promise<Record<string, unknown>> => {
+      calls.skipHabitDay.push({ id, data: input });
+      return { completion: { id: 2 }, task: { uid: id } };
+    },
+    getHabitStats: async (
+      id: string,
+      params?: HabitStatsParams
+    ): Promise<Record<string, unknown>> => {
+      calls.getHabitStats.push({ id, params });
+      return { streak: 5 };
+    },
+    deleteHabit: async (id: string): Promise<void> => {
+      calls.deleteHabit.push(id);
     },
   };
 
@@ -221,7 +514,7 @@ describe('HTTP transport routes', () => {
   });
 
   describe('MCP Streamable HTTP lifecycle & tools', () => {
-    it('lists all 9 tools with enriched Tududi 1.1+ schemas', async () => {
+    it('lists all 52 tools with enriched Tududi 1.1+ schemas across all 9 domains', async () => {
       const { client } = createFakeClient();
       const app = createExpressApp({ client });
       const sessionId = await initializeMcpSession(app);
@@ -238,18 +531,29 @@ describe('HTTP transport routes', () => {
         name: string;
         inputSchema: { properties: Record<string, unknown> };
       }>;
-      expect(tools).toHaveLength(9);
+      expect(tools).toHaveLength(52);
 
       const byName = new Map(tools.map((t) => [t.name, t]));
+      expect(Object.keys(byName.get('tududi_list_tasks')!.inputSchema.properties)).toEqual(
+        expect.arrayContaining(['type', 'status', 'priority', 'projectId', 'areaId', 'tags'])
+      );
       expect(Object.keys(byName.get('tududi_create_task')!.inputSchema.properties)).toEqual(
         expect.arrayContaining([
           'title',
           'description',
           'projectId',
           'areaId',
+          'goalId',
           'dueDate',
+          'dueTime',
+          'deferUntil',
+          'startDate',
+          'estimatedMinutes',
           'priority',
+          'today',
+          'recurrenceType',
           'tags',
+          'subtasks',
         ])
       );
       expect(Object.keys(byName.get('tududi_update_task')!.inputSchema.properties)).toEqual(
@@ -258,6 +562,7 @@ describe('HTTP transport routes', () => {
           'title',
           'description',
           'completed',
+          'status',
           'priority',
           'projectId',
           'areaId',
@@ -266,14 +571,20 @@ describe('HTTP transport routes', () => {
         ])
       );
       expect(Object.keys(byName.get('tududi_create_project')!.inputSchema.properties)).toEqual(
-        expect.arrayContaining(['name', 'description', 'areaId', 'color'])
+        expect.arrayContaining(['name', 'description', 'areaId', 'goalId', 'color', 'status'])
       );
       expect(Object.keys(byName.get('tududi_search_tasks')!.inputSchema.properties)).toEqual(
         expect.arrayContaining(['query', 'projectId', 'areaId', 'completed', 'priority', 'tags'])
       );
+      expect(byName.has('tududi_create_comment')).toBe(true);
+      expect(byName.has('tududi_update_tag')).toBe(true);
+      expect(byName.has('tududi_create_note')).toBe(true);
+      expect(byName.has('tududi_process_inbox_item')).toBe(true);
+      expect(byName.has('tududi_create_goal')).toBe(true);
+      expect(byName.has('tududi_log_habit_completion')).toBe(true);
     });
 
-    it('dispatches all 9 tools and handles tool errors with isError: true', async () => {
+    it('dispatches core and expanded domain tools and handles unknown tools with isError: true', async () => {
       const { client, calls } = createFakeClient();
       const app = createExpressApp({ client });
       const sessionId = await initializeMcpSession(app);
@@ -299,7 +610,10 @@ describe('HTTP transport routes', () => {
 
       const listTasksRes = await callTool(10, 'tududi_list_tasks', {});
       expect(listTasksRes.result?.isError).toBeUndefined();
-      expect(calls.listTasks).toBe(1);
+      expect(calls.listTasks).toEqual([undefined]);
+
+      await callTool(101, 'tududi_list_tasks', { type: 'today', status: 'active' });
+      expect(calls.listTasks[1]).toEqual({ type: 'today', status: 'active' });
 
       await callTool(11, 'tududi_create_task', { title: 'New task', areaId: '5', tags: ['a'] });
       expect(calls.createTask).toEqual([{ title: 'New task', areaId: '5', tags: ['a'] }]);
@@ -332,8 +646,148 @@ describe('HTTP transport routes', () => {
       await callTool(18, 'tududi_search_tasks', { query: 'hello', completed: false });
       expect(calls.searchTasks).toEqual([{ query: 'hello', completed: false }]);
 
+      await callTool(21, 'tududi_get_task_metrics', { type: 'today' });
+      expect(calls.getTaskMetrics).toEqual(['today']);
+
+      await callTool(22, 'tududi_create_subtask', { taskId: 'task-uid-1', title: 'Sub 1' });
+      expect(calls.createSubtask).toEqual([{ taskId: 'task-uid-1', data: { title: 'Sub 1' } }]);
+
+      await callTool(23, 'tududi_create_comment', { taskId: 'task-uid-1', content: 'Note' });
+      expect(calls.createComment).toEqual([{ taskId: 'task-uid-1', data: { content: 'Note' } }]);
+
+      await callTool(24, 'tududi_complete_project', {
+        id: 'proj-uid-1',
+        completeOpenTasks: true,
+      });
+      expect(calls.completeProject).toEqual([{ id: 'proj-uid-1', completeOpenTasks: true }]);
+
+      await callTool(25, 'tududi_update_area', { id: 'area-uid-1', name: 'Personal' });
+      expect(calls.updateArea).toEqual([{ id: 'area-uid-1', data: { name: 'Personal' } }]);
+
+      await callTool(26, 'tududi_create_tag', { name: 'deep' });
+      expect(calls.createTag).toEqual([{ name: 'deep' }]);
+
+      await callTool(27, 'tududi_create_note', { title: 'ADR', content: 'Markdown' });
+      expect(calls.createNote).toEqual([{ title: 'ADR', content: 'Markdown' }]);
+
+      await callTool(28, 'tududi_process_inbox_item', {
+        id: 'inbox-uid-1',
+        taskUid: 'task-uid-1',
+      });
+      expect(calls.processInboxItem).toEqual([
+        { id: 'inbox-uid-1', data: { taskUid: 'task-uid-1' } },
+      ]);
+
+      await callTool(29, 'tududi_create_goal', { title: 'Ship v0.3', horizon: 'quarter' });
+      expect(calls.createGoal).toEqual([{ title: 'Ship v0.3', horizon: 'quarter' }]);
+
+      await callTool(30, 'tududi_log_habit_completion', { id: 'habit-uid-1', value: 2 });
+      expect(calls.logHabitCompletion).toEqual([{ id: 'habit-uid-1', data: { value: 2 } }]);
+
       const unknownToolRes = await callTool(19, 'tududi_nonexistent', {});
       expect(unknownToolRes.result?.isError).toBe(true);
+    });
+
+    it('lists and reads MCP static resources and URI templates', async () => {
+      const { client, calls } = createFakeClient();
+      const app = createExpressApp({ client });
+      const sessionId = await initializeMcpSession(app);
+
+      const postMcp = async (
+        id: number,
+        method: string,
+        params?: unknown
+      ): Promise<JsonRpcResponse> => {
+        const res = await request(app)
+          .post('/mcp')
+          .set('Accept', MCP_ACCEPT)
+          .set('mcp-session-id', sessionId)
+          .send({ jsonrpc: '2.0', id, method, params });
+        expect(res.status).toBe(200);
+        return parseMcpResponse(res);
+      };
+
+      const resourcesRes = await postMcp(40, 'resources/list');
+      const resources = resourcesRes.result?.resources as Array<{ uri: string }>;
+      expect(resources).toHaveLength(11);
+      expect(resources.map((r) => r.uri)).toContain('tududi://tasks/today');
+
+      const templatesRes = await postMcp(41, 'resources/templates/list');
+      const templates = templatesRes.result?.resourceTemplates as Array<{ uriTemplate: string }>;
+      expect(templates).toHaveLength(5);
+      expect(templates.map((t) => t.uriTemplate)).toContain('tududi://note/{uid}');
+
+      const readToday = await postMcp(42, 'resources/read', { uri: 'tududi://tasks/today' });
+      expect(calls.listTasks).toContainEqual({ type: 'today' });
+      const todayContents = readToday.result?.contents as Array<{ text: string }>;
+      expect(JSON.parse(todayContents[0].text)).toEqual([
+        { id: 1, uid: 'task-uid-1', name: 'Sample task' },
+      ]);
+
+      const readNote = await postMcp(43, 'resources/read', { uri: 'tududi://note/note-uid-1' });
+      expect(calls.getNote).toEqual(['note-uid-1']);
+      const noteContents = readNote.result?.contents as Array<{ text: string }>;
+      expect(JSON.parse(noteContents[0].text)).toMatchObject({ uid: 'note-uid-1' });
+
+      const invalidUri = await postMcp(44, 'resources/read', { uri: 'tududi://unknown/1' });
+      expect(invalidUri.error?.code).toBe(-32602);
+    });
+
+    it('lists and renders MCP workflow prompts with argument validation', async () => {
+      const { client } = createFakeClient();
+      const app = createExpressApp({ client });
+      const sessionId = await initializeMcpSession(app);
+
+      const postMcp = async (
+        id: number,
+        method: string,
+        params?: unknown
+      ): Promise<JsonRpcResponse> => {
+        const res = await request(app)
+          .post('/mcp')
+          .set('Accept', MCP_ACCEPT)
+          .set('mcp-session-id', sessionId)
+          .send({ jsonrpc: '2.0', id, method, params });
+        expect(res.status).toBe(200);
+        return parseMcpResponse(res);
+      };
+
+      const promptsRes = await postMcp(50, 'prompts/list');
+      const prompts = promptsRes.result?.prompts as Array<{ name: string }>;
+      expect(prompts).toHaveLength(4);
+      expect(prompts.map((p) => p.name)).toEqual([
+        'tududi_daily_plan',
+        'tududi_weekly_review',
+        'tududi_inbox_triage',
+        'tududi_project_breakdown',
+      ]);
+
+      const dailyPrompt = await postMcp(51, 'prompts/get', {
+        name: 'tududi_daily_plan',
+        arguments: { focusArea: 'Engineering' },
+      });
+      const dailyMessages = dailyPrompt.result?.messages as Array<{ content: { text: string } }>;
+      expect(dailyMessages[0].content.text).toContain('Engineering');
+
+      const breakdownPrompt = await postMcp(52, 'prompts/get', {
+        name: 'tududi_project_breakdown',
+        arguments: { projectName: 'Launch v0.3.0', targetDate: '2026-12-01' },
+      });
+      const breakdownMessages = breakdownPrompt.result?.messages as Array<{
+        content: { text: string };
+      }>;
+      expect(breakdownMessages[0].content.text).toContain('Launch v0.3.0');
+
+      const missingRequired = await postMcp(53, 'prompts/get', {
+        name: 'tududi_project_breakdown',
+        arguments: {},
+      });
+      expect(missingRequired.error?.code).toBe(-32602);
+
+      const unknownPrompt = await postMcp(54, 'prompts/get', {
+        name: 'tududi_unknown_prompt',
+      });
+      expect(unknownPrompt.error?.code).toBe(-32602);
     });
 
     it('returns isError: true when upstream TududuClient throws', async () => {

@@ -3,31 +3,30 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import {
+  CallToolRequestSchema,
+  GetPromptRequestSchema,
+  ListPromptsRequestSchema,
+  ListResourcesRequestSchema,
+  ListResourceTemplatesRequestSchema,
+  ListToolsRequestSchema,
+  ReadResourceRequestSchema,
+} from '@modelcontextprotocol/sdk/types.js';
 import { randomUUID, timingSafeEqual } from 'crypto';
 import express, { NextFunction, Request, Response } from 'express';
 import { realpathSync } from 'fs';
 import { resolve } from 'path';
 import { Config, getConfig } from './config.js';
 import { logger } from './logger.js';
+import { getTududiPrompt, TUDUDI_PROMPTS } from './prompts.js';
+import { readTududiResource, TUDUDI_RESOURCE_TEMPLATES, TUDUDI_RESOURCES } from './resources.js';
+import { executeToolCall, TUDUDI_TOOLS } from './tools.js';
 import { TududuClient } from './tududi-client.js';
-import {
-  CreateProjectInput,
-  CreateTaskInput,
-  SearchTasksParams,
-  UpdateTaskInput,
-} from './types.js';
 
 export interface HttpAppOptions {
   client?: TududuClient;
   mcpAuthToken?: string;
 }
-
-interface IdArg {
-  id: string;
-}
-
-type UpdateTaskArgs = UpdateTaskInput & IdArg;
 
 function createClientFromConfig(config: Config): TududuClient {
   return new TududuClient(
@@ -36,14 +35,6 @@ function createClientFromConfig(config: Config): TududuClient {
     config.tududuEmail,
     config.tududuPassword
   );
-}
-
-function requireStringArg(args: Record<string, unknown>, field: string): string {
-  const value = args[field];
-  if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new Error(`Missing or invalid required parameter: ${field}`);
-  }
-  return value.trim();
 }
 
 function tokensEqual(provided: string, expected: string): boolean {
@@ -73,248 +64,18 @@ function isInitializePayload(body: unknown): boolean {
 
 export function createMcpServer(client: TududuClient): Server {
   const server = new Server(
-    { name: 'tududi-mcp', version: '0.2.0' },
-    { capabilities: { tools: {} } }
+    { name: 'tududi-mcp', version: '0.3.0' },
+    { capabilities: { tools: {}, resources: {}, prompts: {} } }
   );
 
-  // List available tools
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    return {
-      tools: [
-        {
-          name: 'tududi_list_tasks',
-          description: 'List all tasks from Tududi',
-          inputSchema: { type: 'object', properties: {} },
-        },
-        {
-          name: 'tududi_create_task',
-          description: 'Create a new task in Tududi',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              title: { type: 'string', description: 'Task title' },
-              description: { type: 'string', description: 'Task description' },
-              projectId: { type: 'string', description: 'Project ID to assign task to' },
-              areaId: { type: 'string', description: 'Area ID to assign task to' },
-              dueDate: {
-                type: 'string',
-                description: 'Due date in ISO format (YYYY-MM-DD or full ISO)',
-              },
-              priority: {
-                type: 'string',
-                enum: ['low', 'medium', 'high'],
-                description: 'Task priority',
-              },
-              tags: {
-                type: 'array',
-                items: { type: 'string' },
-                description: 'Tags to assign to the task',
-              },
-            },
-            required: ['title'],
-          },
-        },
-        {
-          name: 'tududi_update_task',
-          description: 'Update an existing task',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              id: {
-                type: 'string',
-                description: 'Task uid (string hash from tududi_list_tasks, or numeric id)',
-              },
-              title: { type: 'string', description: 'New task title' },
-              description: {
-                type: 'string',
-                description: 'New task description (mapped to note in Tududi)',
-              },
-              completed: { type: 'boolean', description: 'Task completion status' },
-              priority: {
-                type: 'string',
-                enum: ['low', 'medium', 'high'],
-                description: 'Task priority',
-              },
-              projectId: {
-                type: 'string',
-                description: 'Project ID or UID to assign task to',
-              },
-              areaId: {
-                type: 'string',
-                description: 'Area ID or UID to assign task to',
-              },
-              dueDate: {
-                type: 'string',
-                description: 'Due date in ISO format (YYYY-MM-DD or full ISO)',
-              },
-              tags: {
-                type: 'array',
-                items: { type: 'string' },
-                description: 'Tags to assign to the task',
-              },
-            },
-            required: ['id'],
-          },
-        },
-        {
-          name: 'tududi_delete_task',
-          description: 'Delete a task',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              id: {
-                type: 'string',
-                description: 'Task uid (string hash from tududi_list_tasks, or numeric id)',
-              },
-            },
-            required: ['id'],
-          },
-        },
-        {
-          name: 'tududi_complete_task',
-          description: 'Mark a task as complete',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              id: {
-                type: 'string',
-                description: 'Task uid (string hash from tududi_list_tasks, or numeric id)',
-              },
-            },
-            required: ['id'],
-          },
-        },
-        {
-          name: 'tududi_list_projects',
-          description: 'List all projects from Tududi',
-          inputSchema: { type: 'object', properties: {} },
-        },
-        {
-          name: 'tududi_create_project',
-          description: 'Create a new project in Tududi',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              name: { type: 'string', description: 'Project name' },
-              description: { type: 'string', description: 'Project description' },
-              areaId: { type: 'string', description: 'Area ID to assign project to' },
-              color: { type: 'string', description: 'Project color (hex code or name)' },
-            },
-            required: ['name'],
-          },
-        },
-        {
-          name: 'tududi_list_areas',
-          description: 'List all areas from Tududi',
-          inputSchema: { type: 'object', properties: {} },
-        },
-        {
-          name: 'tududi_search_tasks',
-          description: 'Search tasks with filters',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              query: { type: 'string', description: 'Search query' },
-              projectId: { type: 'string', description: 'Filter by project ID or UID' },
-              areaId: { type: 'string', description: 'Filter by area ID or UID' },
-              completed: { type: 'boolean', description: 'Filter by completion status' },
-              priority: {
-                type: 'string',
-                enum: ['low', 'medium', 'high'],
-                description: 'Filter by priority',
-              },
-              tags: {
-                type: 'array',
-                items: { type: 'string' },
-                description: 'Filter by tag names',
-              },
-            },
-          },
-        },
-      ],
-    };
+    return { tools: TUDUDI_TOOLS };
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: rawArgs } = request.params;
-    const args = (rawArgs ?? {}) as Record<string, unknown>;
-
     try {
-      switch (name) {
-        case 'tududi_list_tasks': {
-          const tasks = await client.listTasks();
-          return { content: [{ type: 'text', text: JSON.stringify(tasks, null, 2) }] };
-        }
-        case 'tududi_create_task': {
-          requireStringArg(args, 'title');
-          const task = await client.createTask(args as unknown as CreateTaskInput);
-          return {
-            content: [
-              {
-                type: 'text',
-                text: `Task created successfully:\n${JSON.stringify(task, null, 2)}`,
-              },
-            ],
-          };
-        }
-        case 'tududi_update_task': {
-          const id = requireStringArg(args, 'id');
-          const { id: _omitted, ...updateData } = args as unknown as UpdateTaskArgs;
-          void _omitted;
-          const task = await client.updateTask(id, updateData);
-          return {
-            content: [
-              {
-                type: 'text',
-                text: `Task updated successfully:\n${JSON.stringify(task, null, 2)}`,
-              },
-            ],
-          };
-        }
-        case 'tududi_delete_task': {
-          const id = requireStringArg(args, 'id');
-          await client.deleteTask(id);
-          return { content: [{ type: 'text', text: `Task ${id} deleted successfully` }] };
-        }
-        case 'tududi_complete_task': {
-          const id = requireStringArg(args, 'id');
-          const task = await client.completeTask(id);
-          return {
-            content: [
-              {
-                type: 'text',
-                text: `Task completed successfully:\n${JSON.stringify(task, null, 2)}`,
-              },
-            ],
-          };
-        }
-        case 'tududi_list_projects': {
-          const projects = await client.listProjects();
-          return { content: [{ type: 'text', text: JSON.stringify(projects, null, 2) }] };
-        }
-        case 'tududi_create_project': {
-          requireStringArg(args, 'name');
-          const project = await client.createProject(args as unknown as CreateProjectInput);
-          return {
-            content: [
-              {
-                type: 'text',
-                text: `Project created successfully:\n${JSON.stringify(project, null, 2)}`,
-              },
-            ],
-          };
-        }
-        case 'tududi_list_areas': {
-          const areas = await client.listAreas();
-          return { content: [{ type: 'text', text: JSON.stringify(areas, null, 2) }] };
-        }
-        case 'tududi_search_tasks': {
-          const tasks = await client.searchTasks(args as unknown as SearchTasksParams);
-          return { content: [{ type: 'text', text: JSON.stringify(tasks, null, 2) }] };
-        }
-        default:
-          throw new Error(`Unknown tool: ${name}`);
-      }
+      return await executeToolCall(client, name, rawArgs);
     } catch (error) {
       logger.error({ error, tool: name }, 'Tool execution failed');
       return {
@@ -327,6 +88,26 @@ export function createMcpServer(client: TududuClient): Server {
         isError: true,
       };
     }
+  });
+
+  server.setRequestHandler(ListResourcesRequestSchema, async () => {
+    return { resources: TUDUDI_RESOURCES };
+  });
+
+  server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
+    return { resourceTemplates: TUDUDI_RESOURCE_TEMPLATES };
+  });
+
+  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+    return readTududiResource(client, request.params.uri);
+  });
+
+  server.setRequestHandler(ListPromptsRequestSchema, async () => {
+    return { prompts: TUDUDI_PROMPTS };
+  });
+
+  server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+    return getTududiPrompt(request.params.name, request.params.arguments);
   });
 
   return server;
